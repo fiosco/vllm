@@ -281,12 +281,12 @@ def has_flashinfer_b12x_gemm() -> bool:
 
 @functools.cache
 def has_flashinfer_b12x_moe() -> bool:
-    """Return ``True`` if FlashInfer CuteDSL SM12x fused MoE is available."""
+    """Return ``True`` if FlashInfer SM12x fused MoE wrapper is available."""
     if not has_flashinfer_moe():
         return False
 
     required_functions = [
-        ("flashinfer.fused_moe", "b12x_fused_moe"),
+        ("flashinfer.fused_moe", "B12xMoEWrapper"),
         ("flashinfer.cute_dsl.utils", "convert_sf_to_mma_layout"),
     ]
 
@@ -697,7 +697,7 @@ def flashinfer_scaled_fp4_mm(
     assert a.stride(-1) == 1 and b.stride(-1) == 1
     assert a.shape[1] == b.shape[1]
 
-    if backend in ("cutlass", "cudnn", "b12x"):
+    if backend in ("cutlass", "cudnn"):
         block_scale_a = block_scale_a.view(torch.uint8)
         block_scale_b = block_scale_b.view(torch.uint8)
 

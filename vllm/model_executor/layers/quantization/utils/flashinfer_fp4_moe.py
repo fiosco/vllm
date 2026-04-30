@@ -317,7 +317,6 @@ def prepare_nvfp4_moe_layer_for_fi_or_cutlass(
         NvFp4MoeBackend.FLASHINFER_CUTLASS,
         NvFp4MoeBackend.FLASHINFER_TRTLLM,
         NvFp4MoeBackend.FLASHINFER_CUTEDSL_BATCHED,
-        NvFp4MoeBackend.FLASHINFER_CUTEDSL,
         NvFp4MoeBackend.FLASHINFER_B12X,
     ]
 

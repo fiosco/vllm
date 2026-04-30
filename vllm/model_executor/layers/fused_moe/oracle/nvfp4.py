@@ -109,7 +109,7 @@ def backend_to_kernel_cls(
         return [FlashInferCuteDSLBatchedExperts]
 
     elif backend == NvFp4MoeBackend.FLASHINFER_B12X:
-        from vllm.model_executor.layers.fused_moe.experts.flashinfer_cutedsl_moe import (  # noqa: E501
+        from vllm.model_executor.layers.fused_moe.experts.flashinfer_b12x_moe import (  # noqa: E501
             FlashInferB12xExperts,
         )
 
@@ -175,7 +175,6 @@ def select_nvfp4_moe_backend(
         NvFp4MoeBackend.FLASHINFER_TRTLLM,
         NvFp4MoeBackend.FLASHINFER_CUTEDSL,
         NvFp4MoeBackend.FLASHINFER_CUTEDSL_BATCHED,
-        NvFp4MoeBackend.FLASHINFER_B12X,
         NvFp4MoeBackend.FLASHINFER_CUTLASS,
         NvFp4MoeBackend.VLLM_CUTLASS,
         NvFp4MoeBackend.MARLIN,

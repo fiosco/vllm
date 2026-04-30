@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
@@ -36,10 +38,9 @@ from vllm.model_executor.layers.fused_moe.all2all_utils import (
     maybe_make_prepare_finalize,
 )
 from vllm.model_executor.layers.fused_moe.config import nvfp4_moe_quant_config
-from vllm.model_executor.layers.fused_moe.experts.flashinfer_cutedsl_moe import (
+from vllm.model_executor.layers.fused_moe.experts.flashinfer_b12x_moe import (
     FlashInferB12xExperts,
 )
-from vllm.utils.flashinfer import flashinfer_convert_sf_to_mma_layout
 from vllm.utils.torch_utils import set_random_seed
 
 # Dimensions chosen to satisfy FP4 alignment requirements (k multiple of 256,
@@ -67,6 +68,22 @@ def _reorder_gate_up_to_up_gate(
         torch.cat([w[:, n:, :], w[:, :n, :]], dim=1),
         torch.cat([w_s[:, n:, :], w_s[:, :n, :]], dim=1),
     )
+
+
+def _process_b12x_weights(
+    experts: FlashInferB12xExperts,
+    w1_scale: torch.Tensor,
+    w2_scale: torch.Tensor,
+    w1_scale_2: torch.Tensor,
+    w2_scale_2: torch.Tensor,
+) -> None:
+    layer = SimpleNamespace(
+        w13_weight_scale=w1_scale,
+        w13_weight_scale_2=w1_scale_2,
+        w2_weight_scale=w2_scale,
+        w2_weight_scale_2=w2_scale_2,
+    )
+    experts.process_weights_after_loading(layer)
 
 
 @pytest.mark.parametrize("m,n,k", MNK_FACTORS)
@@ -162,22 +179,12 @@ def test_flashinfer_b12x_moe(
             moe_config=moe_config,
             quant_config=quant_config,
         )
-        # In production, process_weights_after_loading computes these after
-        # normalizing block scales. In the test the scales are already in final
-        # form (global_scale=1.0), so we compute the MMA layouts directly.
-        num_experts_w1, m1, k1_sf = w1_blockscale.shape
-        experts.w1_sf_mma = flashinfer_convert_sf_to_mma_layout(
-            w1_blockscale.reshape(num_experts_w1 * m1, k1_sf),
-            m=m1,
-            k=k1_sf * 16,
-            num_groups=num_experts_w1,
-        )
-        num_experts_w2, m2, k2_sf = w2_blockscale.shape
-        experts.w2_sf_mma = flashinfer_convert_sf_to_mma_layout(
-            w2_blockscale.reshape(num_experts_w2 * m2, k2_sf),
-            m=m2,
-            k=k2_sf * 16,
-            num_groups=num_experts_w2,
+        _process_b12x_weights(
+            experts,
+            w1_blockscale,
+            w2_blockscale,
+            ones_e,
+            ones_e,
         )
 
         kernel = mk.FusedMoEKernel(
@@ -187,10 +194,7 @@ def test_flashinfer_b12x_moe(
                 allow_new_interface=True,
                 use_monolithic=False,
             ),
-            FlashInferB12xExperts(
-                moe_config=moe_config,
-                quant_config=quant_config,
-            ),
+            experts,
             inplace=False,
         )
 
@@ -291,6 +295,18 @@ def test_flashinfer_b12x_moe_relu2(
             is_act_and_mul=False,
         )
 
+        experts = FlashInferB12xExperts(
+            moe_config=moe_config,
+            quant_config=quant_config,
+        )
+        _process_b12x_weights(
+            experts,
+            w1_blockscale,
+            w2_blockscale,
+            ones_e,
+            ones_e,
+        )
+
         kernel = mk.FusedMoEKernel(
             maybe_make_prepare_finalize(
                 moe=moe_config,
@@ -298,10 +314,7 @@ def test_flashinfer_b12x_moe_relu2(
                 allow_new_interface=True,
                 use_monolithic=False,
             ),
-            FlashInferB12xExperts(
-                moe_config=moe_config,
-                quant_config=quant_config,
-            ),
+            experts,
             inplace=False,
         )
 
