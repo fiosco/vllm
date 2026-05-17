@@ -17,10 +17,15 @@ from typing import Any, Literal
 
 import torch
 
+from vllm.logger import init_logger as _fiosco_init_logger
 from vllm.platforms import current_platform
 from vllm.triton_utils import triton
 
 logger = logging.getLogger(__name__)
+
+# fiosco-v0.1.0: vllm logger for info_once dedup (stdlib logger above is
+# used by the rest of this module).
+_fiosco_logger = _fiosco_init_logger(__name__ + ".fiosco_v01")
 
 COMPILER_MODE = os.getenv("FLA_COMPILER_MODE") == "1"
 FLA_CI_ENV = os.getenv("FLA_CI_ENV") == "1"
@@ -183,6 +188,34 @@ is_tma_supported = (
         or hasattr(triton.language, "make_tensor_descriptor")
     )
 )
+
+# fiosco-v0.1.0 carry #37700 visibility hook -- log the SM12x classification
+# decisions once at module load so the operator can confirm the carry is
+# active and the detection picked the right branch.
+try:
+    _fiosco_dev_name = torch.cuda.get_device_name(0) if is_nvidia else "<non-nvidia>"
+    _fiosco_cc = torch.cuda.get_device_capability(0) if is_nvidia else (-1, -1)
+    _fiosco_smem_list = tuple(get_all_max_shared_mem())
+    _fiosco_logger.info_once(
+        "[fiosco-v0.1.0 carry #37700] FLA SM12x classify (utils.py): "
+        "device=%r cc=%s is_nvidia=%s is_nvidia_hopper=%s "
+        "is_tma_supported=%s max_shared_mem_per_sm=%s "
+        "FLA_USE_TMA_env=%r (expected on SM12x desktop: "
+        "is_nvidia_hopper=False, is_tma_supported=False, smem~101376)",
+        _fiosco_dev_name,
+        _fiosco_cc,
+        is_nvidia,
+        is_nvidia_hopper,
+        is_tma_supported,
+        _fiosco_smem_list,
+        os.getenv("FLA_USE_TMA", "0"),
+    )
+except Exception as _fiosco_exc:
+    _fiosco_logger.info_once(
+        "[fiosco-v0.1.0 carry #37700] FLA classify hook raised %r "
+        "(probe-only; non-fatal)",
+        _fiosco_exc,
+    )
 
 
 class Backend(Enum):

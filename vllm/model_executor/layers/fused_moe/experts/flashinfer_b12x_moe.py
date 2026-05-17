@@ -6,6 +6,7 @@ from typing import Any
 import torch
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
+from vllm.logger import init_logger
 from vllm.model_executor.layers.fused_moe.activation import MoEActivation
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
@@ -25,6 +26,8 @@ from vllm.utils.flashinfer import (
     flashinfer_convert_sf_to_mma_layout,
     has_flashinfer_b12x_moe,
 )
+
+logger = init_logger(__name__)
 
 
 class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
@@ -80,6 +83,23 @@ class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
                 f"Supported: {list(self._ACTIVATION_MAP.keys())}"
             )
         self._activation_str = self._ACTIVATION_MAP[activation]
+
+        logger.info_once(
+            "[fiosco-v0.1.0 carry #41244] FlashInferB12xExperts.__init__: "
+            "activation=%s (b12x_str=%r) num_experts=%d num_local_experts=%d "
+            "topk=%d hidden_dim=%d intermediate_size=%d max_num_tokens=%d "
+            "ep_rank=%d local_expert_offset=%d (ReLU2 indicates Nemotron-H)",
+            activation.name if hasattr(activation, "name") else str(activation),
+            self._activation_str,
+            self.global_num_experts,
+            self.num_local_experts,
+            self.topk,
+            self.hidden_dim,
+            self.intermediate_size_per_partition,
+            self.max_num_tokens,
+            self.ep_rank,
+            self.local_expert_offset,
+        )
 
         # Lazily created on first apply() call.
         self._wrapper: Any | None = None
@@ -210,6 +230,18 @@ class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
 
         from flashinfer.fused_moe import B12xMoEWrapper
 
+        logger.info_once(
+            "[fiosco-v0.1.0 carry #41244] B12xMoEWrapper instantiate "
+            "num_experts=%d top_k=%d hidden_size=%d intermediate_size=%d "
+            "max_num_tokens=%d num_local_experts=%d activation=%r use_cuda_graph=True",
+            self.global_num_experts,
+            self.topk,
+            self.hidden_dim,
+            self.intermediate_size_per_partition,
+            self.max_num_tokens,
+            self.num_local_experts,
+            self._activation_str,
+        )
         self._wrapper = B12xMoEWrapper(
             num_experts=self.global_num_experts,
             top_k=self.topk,
@@ -253,6 +285,7 @@ class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
         )
 
         self._ensure_wrapper()
+        assert self._wrapper is not None, "_ensure_wrapper() sets self._wrapper"
 
         result = self._wrapper.run(
             x=hidden_states,

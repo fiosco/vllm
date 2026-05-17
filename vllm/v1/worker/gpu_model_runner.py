@@ -4267,6 +4267,15 @@ class GPUModelRunner(
             # _update_states to modify block tables while the current
             # batch's proposer is still reading them on the GPU.
             if self.prepare_inputs_event is not None:
+                logger.info_once(
+                    "[fiosco-v0.1.0 carry #37132] sample_tokens wrapper "
+                    "re-recording prepare_inputs_event after spec-decode "
+                    "proposer (proposer_type=%s, max_concurrent_batches=%s)",
+                    type(self.drafter).__name__
+                    if getattr(self, "drafter", None) is not None
+                    else "None",
+                    getattr(self, "max_concurrent_batches", "?"),
+                )
                 self.prepare_inputs_event.record()
 
     def _sample_tokens_impl(

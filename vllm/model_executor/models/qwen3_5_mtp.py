@@ -122,11 +122,34 @@ class Qwen3_5MultiTokenPredictor(nn.Module):
             new_entries = [n for n in extra if n not in quant_config.ignore]
             quant_config.ignore.extend(new_entries)
             if new_entries:
-                logger.info(
-                    "Qwen3_5MTP: extended compressed-tensors ignore with "
-                    "%d per-expert MTP linears (BF16 in the checkpoint)",
+                logger.info_once(
+                    "[fiosco-v0.1.0 carry #41994] Qwen3_5MultiTokenPredictor "
+                    "extended compressed-tensors ignore with %d per-expert "
+                    "MTP linears (BF16 in the checkpoint) "
+                    "num_mtp_layers=%d num_experts=%d sample_entries=%s "
+                    "total_ignore_size_now=%d",
                     len(new_entries),
+                    self.num_mtp_layers,
+                    num_experts,
+                    new_entries[:5],
+                    len(quant_config.ignore),
                 )
+            else:
+                logger.info_once(
+                    "[fiosco-v0.1.0 carry #41994] Qwen3_5MultiTokenPredictor "
+                    "compressed-tensors ignore already contained all "
+                    "%d per-expert MTP linears (no-op extension; checkpoint "
+                    "metadata likely fixed upstream)",
+                    len(extra),
+                )
+        else:
+            logger.info_once(
+                "[fiosco-v0.1.0 carry #41994] Qwen3_5MultiTokenPredictor: "
+                "compressed-tensors ignore-extension path NOT taken "
+                "(quant_config=%s) -- safe iff checkpoint is not "
+                "compressed-tensors NVFP4 with MTP experts",
+                type(quant_config).__name__ if quant_config is not None else "None",
+            )
 
         self.layers = torch.nn.ModuleList(
             Qwen3_5DecoderLayer(
