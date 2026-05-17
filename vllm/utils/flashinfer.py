@@ -293,7 +293,11 @@ def has_flashinfer_b12x_moe() -> bool:
         return False
 
     required_functions = [
-        ("flashinfer.fused_moe", "b12x_fused_moe"),
+        # Resolved 2026-05-17 during v0.1.0 carry integration: #41244 introduces
+        # FlashInferB12xExperts._ensure_wrapper which `from flashinfer.fused_moe
+        # import B12xMoEWrapper`, so the probe targets the wrapper class
+        # (#40082's older `b12x_fused_moe` function probe would false-positive).
+        ("flashinfer.fused_moe", "B12xMoEWrapper"),
         ("flashinfer.cute_dsl.utils", "convert_sf_to_mma_layout"),
     ]
 
