@@ -4,6 +4,7 @@
 import torch
 
 from vllm._custom_ops import scaled_fp4_quant
+from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization.utils.nvfp4_utils import (
     pad_nvfp4_activation_for_cutlass,
     pad_nvfp4_weight_for_cutlass,
@@ -18,6 +19,8 @@ from vllm.utils.flashinfer import (
 )
 
 from .base import NvFp4LinearKernel, NvFp4LinearLayerConfig
+
+logger = init_logger(__name__)
 
 
 class FlashInferCutlassNvFp4LinearKernel(NvFp4LinearKernel):
@@ -257,6 +260,16 @@ class FlashInferB12xNvFp4LinearKernel(NvFp4LinearKernel):
         x: torch.Tensor,
         bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        logger.info_once(
+            "[fiosco-v0.1.0 carry #40082] FlashInferB12xNvFp4LinearKernel."
+            "apply_weights active cc=%s in_shape=%s in_dtype=%s "
+            "out_size=%d weights_padding_cols=%s backend=b12x",
+            current_platform.get_device_capability(),
+            tuple(x.shape),
+            str(x.dtype),
+            layer.output_size_per_partition,
+            getattr(layer, "weights_padding_cols", "<unset>"),
+        )
         output_size = layer.output_size_per_partition
         output_dtype = x.dtype
         output_shape = [*x.shape[:-1], output_size]
