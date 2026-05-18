@@ -253,6 +253,13 @@ class FlashInferB12xNvFp4LinearKernel(NvFp4LinearKernel):
         )
         layer.weight = torch.nn.Parameter(padded_weight, requires_grad=False)
         layer.weights_padding_cols = weights_padding_cols
+        # fiosco-v0.1.0 carry #40082: FlashInferB12xNvFp4LinearKernel loaded.
+        # Hook at process_weights_after_loading (model load) not apply_weights
+        # (compile region) — see commit history for the dynamo bail story.
+        logger.info_once(
+            "[fiosco-v0.1.0 carry #40082] FlashInferB12xNvFp4LinearKernel "
+            "loaded (b12x SM120/121 NVFP4 linear/GEMM kernel)"
+        )
 
     def apply_weights(
         self,
@@ -260,16 +267,6 @@ class FlashInferB12xNvFp4LinearKernel(NvFp4LinearKernel):
         x: torch.Tensor,
         bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        logger.info_once(
-            "[fiosco-v0.1.0 carry #40082] FlashInferB12xNvFp4LinearKernel."
-            "apply_weights active cc=%s in_shape=%s in_dtype=%s "
-            "out_size=%d weights_padding_cols=%s backend=b12x",
-            current_platform.get_device_capability(),
-            tuple(x.shape),
-            str(x.dtype),
-            layer.output_size_per_partition,
-            getattr(layer, "weights_padding_cols", "<unset>"),
-        )
         output_size = layer.output_size_per_partition
         output_dtype = x.dtype
         output_shape = [*x.shape[:-1], output_size]

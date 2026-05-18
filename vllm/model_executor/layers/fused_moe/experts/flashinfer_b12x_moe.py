@@ -84,21 +84,11 @@ class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
             )
         self._activation_str = self._ACTIVATION_MAP[activation]
 
+        # fiosco-v0.1.0 carry #41244: FlashInferB12xExperts instantiated
+        # (b12x SM120/121 fused-MoE; SiLU for Qwen-MoE, ReLU2 for Nemotron-H).
         logger.info_once(
-            "[fiosco-v0.1.0 carry #41244] FlashInferB12xExperts.__init__: "
-            "activation=%s (b12x_str=%r) num_experts=%d num_local_experts=%d "
-            "topk=%d hidden_dim=%d intermediate_size=%d max_num_tokens=%d "
-            "ep_rank=%d local_expert_offset=%d (ReLU2 indicates Nemotron-H)",
-            activation.name if hasattr(activation, "name") else str(activation),
-            self._activation_str,
-            self.global_num_experts,
-            self.num_local_experts,
-            self.topk,
-            self.hidden_dim,
-            self.intermediate_size_per_partition,
-            self.max_num_tokens,
-            self.ep_rank,
-            self.local_expert_offset,
+            "[fiosco-v0.1.0 carry #41244] FlashInferB12xExperts instantiated "
+            "(b12x SM120/121 fused-MoE: SiLU or ReLU2/Nemotron-H)"
         )
 
         # Lazily created on first apply() call.
@@ -230,18 +220,14 @@ class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
 
         from flashinfer.fused_moe import B12xMoEWrapper
 
-        logger.info_once(
-            "[fiosco-v0.1.0 carry #41244] B12xMoEWrapper instantiate "
-            "num_experts=%d top_k=%d hidden_size=%d intermediate_size=%d "
-            "max_num_tokens=%d num_local_experts=%d activation=%r use_cuda_graph=True",
-            self.global_num_experts,
-            self.topk,
-            self.hidden_dim,
-            self.intermediate_size_per_partition,
-            self.max_num_tokens,
-            self.num_local_experts,
-            self._activation_str,
-        )
+        # fiosco-v0.1.0 carry #41244: previous version logged here during the
+        # lazy wrapper construction. That site is called from the apply() hot
+        # path which torch.compile traces during CUDA-graph capture; logger
+        # calls there have caused dynamo bailouts on related hooks. The
+        # FlashInferB12xExperts.__init__ hook above already fires at model load
+        # with the same info (and adds the activation_str + ep_rank that this
+        # site doesn't have), so this duplicate is unnecessary. Removed to keep
+        # the apply path dynamo-safe.
         self._wrapper = B12xMoEWrapper(
             num_experts=self.global_num_experts,
             top_k=self.topk,

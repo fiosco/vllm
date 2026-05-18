@@ -113,9 +113,10 @@ def backend_to_kernel_cls(
             FlashInferB12xExperts,
         )
 
+        # fiosco-v0.1.0 carry #40082: b12x MoE backend selected.
         logger.info_once(
-            "[fiosco-v0.1.0 carry #40082] NvFp4 MoE backend FLASHINFER_B12X "
-            "selected -> FlashInferB12xExperts (SM120/SM121 b12x CuTe DSL kernel)",
+            "[fiosco-v0.1.0 carry #40082] FLASHINFER_B12X MoE backend selected "
+            "(b12x SM120/121 NVFP4 CuTe DSL MoE)"
         )
         return [FlashInferB12xExperts]
 
@@ -184,11 +185,11 @@ def select_nvfp4_moe_backend(
         NvFp4MoeBackend.MARLIN,
         NvFp4MoeBackend.EMULATION,
     ]
+    # fiosco-v0.1.0 carry #40082: NVFP4 MoE backend auto-select reached
+    # (b12x explicitly excluded; --moe-backend flashinfer_b12x to opt in).
     logger.info_once(
-        "[fiosco-v0.1.0 carry #40082] select_nvfp4_moe_backend "
-        "auto-select candidates=%s (FLASHINFER_B12X intentionally excluded; "
-        "use moe_backend='flashinfer_b12x' to opt in)",
-        tuple(b.value for b in AVAILABLE_BACKENDS),
+        "[fiosco-v0.1.0 carry #40082] select_nvfp4_moe_backend auto-select "
+        "(FLASHINFER_B12X excluded; --moe-backend flashinfer_b12x to opt in)"
     )
 
     use_batched = config.moe_parallel_config.use_batched_activation_format
