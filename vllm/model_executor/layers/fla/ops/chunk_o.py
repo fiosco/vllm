@@ -28,13 +28,11 @@ logger = init_logger(__name__)
 BKV_LIST = [32, 64, 128]
 NUM_WARPS = [2, 4, 8]
 
+# fiosco-v0.1.0 carry #37700: FLA chunk_o module loaded with SM12x-safe
+# autotune space (fired once at import).
 logger.info_once(
-    "[fiosco-v0.1.0 carry #37700] FLA chunk_o autotune space: "
-    "BKV_LIST=%s NUM_WARPS=%s "
-    "(post-carry: unconditional [32,64,128] / [2,4,8]; "
-    "pre-carry was [64,128] or [32,64] / [2,4] on Hopper-classified GPUs)",
-    tuple(BKV_LIST),
-    tuple(NUM_WARPS),
+    "[fiosco-v0.1.0 carry #37700] FLA chunk_o loaded "
+    "(SM12x autotune fix: BKV_LIST/NUM_WARPS expanded)"
 )
 
 

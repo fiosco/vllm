@@ -1825,17 +1825,14 @@ def scaled_fp4_experts_quant(
         dtype=torch.int32,
         device=input_tensor.device,
     )
-    logger.info_once(
-        "[fiosco-v0.1.0 carry #37564] scaled_fp4_experts_quant: "
-        "output_scales allocated via torch.zeros (NOT torch.empty) "
-        "shape=(%d, %d) dtype=int32 device=%s "
-        "(actual_m_numtopk=%d -> padding_rows=%d zeroed to prevent NaN contamination)",
-        MAX_TOKENS_PER_EXPERT * topk,
-        padded_k,
-        str(input_tensor.device),
-        m_numtopk,
-        MAX_TOKENS_PER_EXPERT * topk - m_numtopk,
-    )
+    # fiosco-v0.1.0 carry #37564: entered NVFP4-padding zero-init fix path.
+    # Guarded by torch.compiler.is_compiling() because this runs inside the
+    # MoE forward, which torch.compile traces during CUDA-graph capture.
+    if not torch.compiler.is_compiling():
+        logger.info_once(
+            "[fiosco-v0.1.0 carry #37564] scaled_fp4_experts_quant entered "
+            "(NVFP4 MoE padding zero-init NaN-contamination fix)"
+        )
     torch.ops._C.scaled_fp4_experts_quant(
         output,
         output_scales,
@@ -1902,17 +1899,13 @@ def silu_and_mul_scaled_fp4_experts_quant(
         dtype=torch.int32,
         device=input_tensor.device,
     )
-    logger.info_once(
-        "[fiosco-v0.1.0 carry #37564] silu_and_mul_scaled_fp4_experts_quant: "
-        "output_scales allocated via torch.zeros (NOT torch.empty) "
-        "shape=(%d, %d) dtype=int32 device=%s "
-        "(actual_m_numtopk=%d -> padding_rows=%d zeroed to prevent NaN contamination)",
-        MAX_TOKENS_PER_EXPERT * topk,
-        padded_k,
-        str(input_tensor.device),
-        m_numtopk,
-        MAX_TOKENS_PER_EXPERT * topk - m_numtopk,
-    )
+    # fiosco-v0.1.0 carry #37564: entered NVFP4-padding zero-init fix path
+    # (twin of scaled_fp4_experts_quant above).
+    if not torch.compiler.is_compiling():
+        logger.info_once(
+            "[fiosco-v0.1.0 carry #37564] silu_and_mul_scaled_fp4_experts_quant "
+            "entered (NVFP4 MoE padding zero-init NaN-contamination fix)"
+        )
     torch.ops._C.silu_and_mul_scaled_fp4_experts_quant(
         output,
         output_scales,
