@@ -6,6 +6,7 @@ from typing import Any
 import torch
 
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
+from vllm.logger import init_logger
 from vllm.model_executor.layers.fused_moe.activation import MoEActivation
 from vllm.model_executor.layers.fused_moe.config import (
     FusedMoEConfig,
@@ -25,6 +26,8 @@ from vllm.utils.flashinfer import (
     flashinfer_convert_sf_to_mma_layout,
     has_flashinfer_b12x_moe,
 )
+
+logger = init_logger(__name__)
 
 
 class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
@@ -80,6 +83,13 @@ class FlashInferB12xExperts(mk.FusedMoEExpertsModular):
                 f"Supported: {list(self._ACTIVATION_MAP.keys())}"
             )
         self._activation_str = self._ACTIVATION_MAP[activation]
+
+        # fiosco-v0.1.2 carry #41244: FlashInferB12xExperts instantiated
+        # (b12x SM120/121 fused-MoE; SiLU for Qwen-MoE, ReLU2 for Nemotron-H).
+        logger.info_once(
+            "[fiosco-v0.1.2 carry #41244] FlashInferB12xExperts instantiated "
+            "(b12x SM120/121 fused-MoE: SiLU or ReLU2/Nemotron-H)"
+        )
 
         # Lazily created on first apply() call.
         self._wrapper: Any | None = None

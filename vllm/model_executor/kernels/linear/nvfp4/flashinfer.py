@@ -4,6 +4,7 @@
 import torch
 
 from vllm._custom_ops import scaled_fp4_quant
+from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization.utils.nvfp4_utils import (
     pad_nvfp4_activation_for_cutlass,
     pad_nvfp4_weight_for_cutlass,
@@ -18,6 +19,8 @@ from vllm.utils.flashinfer import (
 )
 
 from .base import NvFp4LinearKernel, NvFp4LinearLayerConfig
+
+logger = init_logger(__name__)
 
 
 class FlashInferCutlassNvFp4LinearKernel(NvFp4LinearKernel):
@@ -250,6 +253,13 @@ class FlashInferB12xNvFp4LinearKernel(NvFp4LinearKernel):
         )
         layer.weight = torch.nn.Parameter(padded_weight, requires_grad=False)
         layer.weights_padding_cols = weights_padding_cols
+        # fiosco-v0.1.2 carry #40082: FlashInferB12xNvFp4LinearKernel loaded.
+        # Hook at process_weights_after_loading (model load) not apply_weights
+        # (compile region) — see commit history for the dynamo bail story.
+        logger.info_once(
+            "[fiosco-v0.1.2 carry #40082] FlashInferB12xNvFp4LinearKernel "
+            "loaded (b12x SM120/121 NVFP4 linear/GEMM kernel)"
+        )
 
     def apply_weights(
         self,

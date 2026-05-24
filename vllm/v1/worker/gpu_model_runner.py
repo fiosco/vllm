@@ -4217,6 +4217,13 @@ class GPUModelRunner(
             # _update_states to modify block tables while the current
             # batch's proposer is still reading them on the GPU.
             if self.prepare_inputs_event is not None:
+                # fiosco-v0.1.2 carry #37132: entered spec-decode prepare_inputs
+                # race-fix wrapper. Defensively guarded with is_compiling().
+                if not torch.compiler.is_compiling():
+                    logger.info_once(
+                        "[fiosco-v0.1.2 carry #37132] sample_tokens wrapper "
+                        "entered (spec-decode prepare_inputs_event race fix)"
+                    )
                 self.prepare_inputs_event.record()
 
     def _sample_tokens_impl(
