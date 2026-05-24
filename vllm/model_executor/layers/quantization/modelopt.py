@@ -2210,12 +2210,18 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
         quantized_layers: dict[str, dict[str, Any]],
         fp8_config: ModelOptFp8Config,
         nvfp4_config: ModelOptNvFp4Config,
+        fp8_pbwo_config: ModelOptFp8Config | None = None,
     ) -> None:
         super().__init__(exclude_modules)
         self.kv_cache_quant_method = kv_cache_quant_method
         self.quantized_layers = quantized_layers
         self.fp8_config = fp8_config
         self.nvfp4_config = nvfp4_config
+        self.fp8_pbwo_config = fp8_pbwo_config
+
+    def has_blocked_weights(self) -> bool:
+        """True if any layer in this config uses FP8_PB_WO."""
+        return self.fp8_pbwo_config is not None
 
     def get_name(self) -> QuantizationMethods:
         return "modelopt_mixed"
@@ -2282,12 +2288,32 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
             group_size=group_size,
         )
 
+        pbwo_count = sum(
+            1
+            for layer_info in quantized_layers.values()
+            if layer_info.get("quant_algo", "").upper() == "FP8_PB_WO"
+        )
+        fp8_pbwo_config: ModelOptFp8Config | None = None
+        if pbwo_count > 0:
+            fp8_pbwo_config = ModelOptFp8Config(
+                quant_method="FP8_PB_WO",
+                is_checkpoint_fp8_serialized=True,
+                kv_cache_quant_method=kv_cache_quant_method,
+                exclude_modules=[],
+            )
+            logger.info(
+                "Detected ModelOpt mixed-precision checkpoint with %d "
+                "FP8_PB_WO entries",
+                pbwo_count,
+            )
+
         return cls(
             kv_cache_quant_method=kv_cache_quant_method,
             exclude_modules=exclude_modules,
             quantized_layers=quantized_layers,
             fp8_config=fp8_config,
             nvfp4_config=nvfp4_config,
+            fp8_pbwo_config=fp8_pbwo_config,
         )
 
     def _resolve_quant_algo(self, prefix: str) -> str | None:
@@ -2350,6 +2376,9 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
         quant_algo = self._resolve_quant_algo(prefix)
 
         if isinstance(layer, LinearBase):
+            if quant_algo == "FP8_PB_WO":
+                assert self.fp8_pbwo_config is not None
+                return ModelOptFp8PbWoLinearMethod(self.fp8_pbwo_config)
             if quant_algo == "FP8":
                 return ModelOptFp8LinearMethod(self.fp8_config)
             if quant_algo == "NVFP4":
