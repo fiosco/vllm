@@ -1825,6 +1825,14 @@ def scaled_fp4_experts_quant(
         dtype=torch.int32,
         device=input_tensor.device,
     )
+    # fiosco-v0.1.2 carry #37564: entered NVFP4-padding zero-init fix path.
+    # Guarded by torch.compiler.is_compiling() because this runs inside the
+    # MoE forward, which torch.compile traces during CUDA-graph capture.
+    if not torch.compiler.is_compiling():
+        logger.info_once(
+            "[fiosco-v0.1.2 carry #37564] scaled_fp4_experts_quant entered "
+            "(NVFP4 MoE padding zero-init NaN-contamination fix)"
+        )
     torch.ops._C.scaled_fp4_experts_quant(
         output,
         output_scales,
@@ -1891,6 +1899,13 @@ def silu_and_mul_scaled_fp4_experts_quant(
         dtype=torch.int32,
         device=input_tensor.device,
     )
+    # fiosco-v0.1.2 carry #37564: entered NVFP4-padding zero-init fix path
+    # (twin of scaled_fp4_experts_quant above).
+    if not torch.compiler.is_compiling():
+        logger.info_once(
+            "[fiosco-v0.1.2 carry #37564] silu_and_mul_scaled_fp4_experts_quant "
+            "entered (NVFP4 MoE padding zero-init NaN-contamination fix)"
+        )
     torch.ops._C.silu_and_mul_scaled_fp4_experts_quant(
         output,
         output_scales,

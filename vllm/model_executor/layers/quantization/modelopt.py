@@ -2378,6 +2378,11 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
         if isinstance(layer, LinearBase):
             if quant_algo == "FP8_PB_WO":
                 assert self.fp8_pbwo_config is not None
+                logger.info_once(
+                    "[fiosco-v0.1.2 carry modelopt-mixed-pbwo] "
+                    "dispatched FP8_PB_WO layer %s",
+                    prefix,
+                )
                 return ModelOptFp8PbWoLinearMethod(self.fp8_pbwo_config)
             if quant_algo == "FP8":
                 return ModelOptFp8LinearMethod(self.fp8_config)

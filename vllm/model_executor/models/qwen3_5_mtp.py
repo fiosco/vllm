@@ -108,6 +108,13 @@ class Qwen3_5MultiTokenPredictor(nn.Module):
         # the active CT `ignore` list with every per-expert MTP linear so the
         # FusedMoE picks `UnquantizedFusedMoEMethod` and registers BF16
         # `w13_weight` / `w2_weight` matching the checkpoint.
+        # fiosco-v0.1.2 carry #41994: Qwen3_5MultiTokenPredictor entered the
+        # MTP ignore-extension path (per-expert MTP linears appended to
+        # compressed-tensors ignore list if checkpoint is compressed-tensors).
+        logger.info_once(
+            "[fiosco-v0.1.2 carry #41994] Qwen3_5MultiTokenPredictor entered "
+            "(compressed-tensors MTP per-expert ignore extension)"
+        )
         if (
             quant_config is not None
             and quant_config.get_name() == "compressed-tensors"
@@ -121,12 +128,6 @@ class Qwen3_5MultiTokenPredictor(nn.Module):
                         extra.append(f"{prefix}.layers.{idx}.mlp.experts.{eid}.{proj}")
             new_entries = [n for n in extra if n not in quant_config.ignore]
             quant_config.ignore.extend(new_entries)
-            if new_entries:
-                logger.info(
-                    "Qwen3_5MTP: extended compressed-tensors ignore with "
-                    "%d per-expert MTP linears (BF16 in the checkpoint)",
-                    len(new_entries),
-                )
 
         self.layers = torch.nn.ModuleList(
             Qwen3_5DecoderLayer(

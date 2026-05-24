@@ -12,11 +12,14 @@
 
 import torch
 
+from vllm.logger import init_logger
 from vllm.triton_utils import tl, triton
 
 from .index import prepare_chunk_indices
 from .op import exp
 from .utils import FLA_CHUNK_SIZE
+
+logger = init_logger(__name__)
 
 # BKV values are tile dimensions, not memory sizes. The Triton autotuner
 # compiles each (BK, BV, num_stages, num_warps) combination and skips any
@@ -24,6 +27,13 @@ from .utils import FLA_CHUNK_SIZE
 # autotuner find the best fit for the hardware.
 BKV_LIST = [32, 64, 128]
 NUM_WARPS = [2, 4, 8]
+
+# fiosco-v0.1.2 carry #37700: FLA chunk_o module loaded with SM12x-safe
+# autotune space (fired once at import).
+logger.info_once(
+    "[fiosco-v0.1.2 carry #37700] FLA chunk_o loaded "
+    "(SM12x autotune fix: BKV_LIST/NUM_WARPS expanded)"
+)
 
 
 @triton.heuristics(
