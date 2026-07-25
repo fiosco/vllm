@@ -2524,6 +2524,14 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
         quant_algo = self._resolve_quant_algo(prefix)
 
         if isinstance(layer, (LinearBase, ParallelLMHead)):
+            if quant_algo == "FP8_PB_WO":
+                # Block-scaled FP8 weight-only (FP8_PB_WO) linears, as used by
+                # MIXED-FP8PBWO-NVFP4 checkpoints (FP8_PB_WO linears + NVFP4
+                # experts). ModelOptFp8PbWoLinearMethod reads only
+                # is_checkpoint_fp8_serialized from its config (not
+                # quant_method), so the mixed config's fp8_config suffices.
+                # No RoutedExperts arm: the method is LinearMethodBase-only.
+                return ModelOptFp8PbWoLinearMethod(self.fp8_config)
             if quant_algo == "FP8":
                 return ModelOptFp8LinearMethod(self.fp8_config)
             if quant_algo == "NVFP4":
