@@ -154,6 +154,8 @@ is_nvidia_hopper = is_nvidia and (
 )
 use_cuda_graph = is_nvidia and os.environ.get("FLA_USE_CUDA_GRAPH", "0") == "1"
 is_gather_supported = hasattr(triton.language, "gather")
+
+
 def get_all_max_shared_mem():
     try:
         return [

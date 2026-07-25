@@ -1,0 +1,61 @@
+# Fiosco vLLM v0.2.0 overlay image.
+#
+# Base: official upstream `vllm/vllm-openai:v0.26.0` (pick the arch matching the
+# target: amd64 for SM120 RTX Blackwell, arm64 for sm_121 DGX Spark GB10).
+# Adds: the Arm-A Python carries (release/cu130-v0.2.0) + the DeepGEMM sm121
+# MQA-logits kernel aliases (Track B, sm_121 only).
+#
+# Build (from the repo root as context):
+#   docker build -f docker/Dockerfile.fiosco-overlay \
+#     --build-arg BASE=vllm/vllm-openai:v0.26.0 -t fiosco/vllm:v0.2.0 .
+#
+# The full multi-arch build + distribution is owned by the separate
+# fiosco-vllm-blackwell-docker plan; this overlay is the minimal production image.
+
+ARG BASE=vllm/vllm-openai:v0.26.0
+FROM ${BASE}
+
+ARG SITE=/usr/local/lib/python3.12/dist-packages/vllm
+
+# --- Arm-A carries: Python deltas overlaid from release/cu130-v0.2.0 -----------
+# pr-37132 spec-decode prepare_inputs_event re-record (MTP race)
+COPY vllm/v1/worker/gpu_model_runner.py                              ${SITE}/v1/worker/gpu_model_runner.py
+# pr-37564 NVFP4/MXFP4 expert padding-scale zero-init
+COPY vllm/_custom_ops.py                                            ${SITE}/_custom_ops.py
+# pr-37700 FLA Hopper/TMA SM12x misclassification (SMEM-gated)
+COPY vllm/third_party/flash_linear_attention/ops/chunk_o.py         ${SITE}/third_party/flash_linear_attention/ops/chunk_o.py
+COPY vllm/third_party/flash_linear_attention/ops/utils.py           ${SITE}/third_party/flash_linear_attention/ops/utils.py
+# pr-41994 Qwen3.5 MTP compressed-tensors ignore
+COPY vllm/model_executor/models/qwen3_5_mtp.py                      ${SITE}/model_executor/models/qwen3_5_mtp.py
+# fiosco modelopt-mixed-pbwo FP8_PB_WO dispatch
+COPY vllm/model_executor/layers/quantization/modelopt.py           ${SITE}/model_executor/layers/quantization/modelopt.py
+
+# --- Track B: DeepGEMM sm121 MQA-logits kernel aliases (option a) --------------
+# The bundled DeepGEMM ships FP8/FP4 MQA-logits ("lightning indexer") kernels for
+# sm90/100/120 but NOT sm121, and couples both the include filename and the entry
+# symbol to the arch string with no sm120 fallback. sm120 SASS is forward-
+# compatible on sm121 (the kernel guard is __CUDA_ARCH__ >= 1200, which admits
+# 1210), so alias each sm120 kernel to the sm121 filename + entry symbol. Harmless
+# on non-sm121 arches (the aliases are only JIT-selected on cap-12.1 devices).
+# Long-term this is upstreamable to DeepGEMM (a >=1200 dispatch); see plan B0.
+RUN set -eux; \
+    D=${SITE}/third_party/deep_gemm/include/deep_gemm/impls; \
+    if [ -d "$D" ]; then \
+      for v in fp8_mqa_logits fp8_paged_mqa_logits fp4_mqa_logits fp4_paged_mqa_logits; do \
+        if [ -f "$D/sm120_$v.cuh" ]; then \
+          cp "$D/sm120_$v.cuh" "$D/sm121_$v.cuh"; \
+          sed -i 's/sm120_fp/sm121_fp/g' "$D/sm121_$v.cuh"; \
+        fi; \
+      done; \
+      echo "DeepGEMM sm121 aliases created:"; ls "$D"/sm121_*.cuh; \
+    else \
+      echo "WARN: DeepGEMM impls dir not found at $D (base image layout changed?)"; \
+    fi
+
+# --- Import sanity ------------------------------------------------------------
+RUN python3 -c "import vllm, vllm._custom_ops; \
+import vllm.model_executor.layers.quantization.modelopt as m; \
+import vllm.model_executor.models.qwen3_5_mtp; \
+import vllm.third_party.flash_linear_attention.ops.utils as u; \
+assert hasattr(m, 'ModelOptFp8PbWoLinearMethod'); \
+print('fiosco/vllm:v0.2.0 overlay import OK')"
