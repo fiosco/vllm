@@ -162,10 +162,26 @@ class Step3p5MTPProposer(EagleProposer):
 
     def _create_draft_vllm_config(self) -> VllmConfig:
         base = super()._create_draft_vllm_config()
+        quant_config = get_draft_quant_config(base)
+        if quant_config is not None:
+            # Draft quant configs are built fresh (get_draft_quant_config) and
+            # never pass through configure_quant_config, so fused-module shard
+            # expansion is empty; quant schemes whose targets name the
+            # constituent projections (q_a_proj / kv_a_proj_with_mqa,
+            # gate_proj / up_proj) then fail to match the fused module and the
+            # block silently builds unquantized, breaking checkpoints with
+            # quantized NextN MTP layers. Restore the standard packed-module
+            # mapping so shard expansion resolves the constituent projections.
+            quant_config.packed_modules_mapping.setdefault(
+                "fused_qkv_a_proj", ["q_a_proj", "kv_a_proj_with_mqa"]
+            )
+            quant_config.packed_modules_mapping.setdefault(
+                "gate_up_proj", ["gate_proj", "up_proj"]
+            )
         return replace(
             base,
             model_config=self.draft_model_config,
-            quant_config=get_draft_quant_config(base),
+            quant_config=quant_config,
         )
 
     def validate_same_kv_cache_group(self, kv_cache_config: KVCacheConfig) -> None:
