@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import os
+
 import torch
 import torch.nn as nn
 from typing_extensions import override
@@ -82,11 +84,34 @@ class DraftModelProposer(SpecDecodeBaseProposer):
         base = super()._create_draft_vllm_config()
         spec = self.speculative_config
 
+        # The draft parallel config built by create_draft_parallel_config()
+        # does not copy decode_context_parallel_size from the target, so the
+        # draft attention silently runs with DCP=1 (no q-allgather, no LSE
+        # merge) while its KV/metadata use DCP-local sharded semantics. Mirror
+        # the target DCP size onto the draft parallel config so the draft
+        # attention path matches. The V2 runner path restores target DCP for
+        # native MTP drafts; this mirrors that for the V1 DraftModel path.
+        # VLLM_DCP_SHARD_DRAFT defaults to "1" for the mtp method, "0"
+        # otherwise; set it explicitly to opt in for other methods.
+        default_shard_draft = "1" if spec.method == "mtp" else "0"
+        draft_parallel_config = spec.draft_parallel_config
+        if os.environ.get("VLLM_DCP_SHARD_DRAFT", default_shard_draft).lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            draft_parallel_config = replace(
+                draft_parallel_config,
+                decode_context_parallel_size=(
+                    self.vllm_config.parallel_config.decode_context_parallel_size
+                ),
+            )
+
         return replace(
             base,
             quant_config=None,
             parallel_config=replace(
-                spec.draft_parallel_config,
+                draft_parallel_config,
                 rank=self.vllm_config.parallel_config.rank,
             ),
             model_config=spec.draft_model_config,
