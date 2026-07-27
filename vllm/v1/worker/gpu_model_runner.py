@@ -4497,6 +4497,21 @@ class GPUModelRunner(
     def sample_tokens(
         self, grammar_output: "GrammarOutput | None"
     ) -> ModelRunnerOutput | AsyncModelRunnerOutput | IntermediateTensors:
+        try:
+            return self._sample_tokens_impl(grammar_output)
+        finally:
+            # Re-record prepare_inputs_event AFTER sample_tokens (which runs the
+            # spec-decode MTP/EAGLE proposer) so the next batch's execute_model
+            # waits for ALL GPU work from this step, not just execute_model.
+            # Without this, the next batch's _update_states can modify block
+            # tables while this batch's proposer still reads them on the GPU,
+            # causing illegal memory access under concurrent MTP spec-decode.
+            if self.prepare_inputs_event is not None:
+                self.prepare_inputs_event.record()
+
+    def _sample_tokens_impl(
+        self, grammar_output: "GrammarOutput | None"
+    ) -> ModelRunnerOutput | AsyncModelRunnerOutput | IntermediateTensors:
         if self.execute_model_state is None:
             kv_connector_output = self.kv_connector_output
             self.kv_connector_output = None
