@@ -103,6 +103,34 @@ class Qwen3_5MultiTokenPredictor(nn.Module):
             prefix=f"{prefix}.fc",
         )
 
+        # Compressed-tensors NVFP4 Qwen3.5 MoE checkpoints store the MTP layer's
+        # per-expert MLP linears as BF16 (unquantized) but omit them from the
+        # compressed-tensors `ignore` list, so vLLM would build a quantized
+        # FusedMoE for the MTP layer and weight loading fails (KeyError on
+        # ...experts.w2_weight). Mirror the mtp.fc workaround above for the
+        # experts: extend the active CT ignore list with every per-expert MTP
+        # linear so the FusedMoE selects UnquantizedFusedMoEMethod and registers
+        # BF16 w13/w2 weights matching the checkpoint.
+        if (
+            quant_config is not None
+            and quant_config.get_name() == "compressed-tensors"
+            and hasattr(quant_config, "ignore")
+        ):
+            num_experts = getattr(config, "num_experts", 0)
+            extra: list[str] = []
+            for idx in range(self.num_mtp_layers):
+                for eid in range(num_experts):
+                    for proj in ("gate_proj", "up_proj", "down_proj"):
+                        extra.append(f"{prefix}.layers.{idx}.mlp.experts.{eid}.{proj}")
+            new_entries = [n for n in extra if n not in quant_config.ignore]
+            quant_config.ignore.extend(new_entries)
+            if new_entries:
+                logger.info(
+                    "Qwen3_5MTP: extended compressed-tensors ignore with %d "
+                    "per-expert MTP linears (BF16 in the checkpoint)",
+                    len(new_entries),
+                )
+
         self.layers = torch.nn.ModuleList(
             Qwen3_5DecoderLayer(
                 vllm_config,
