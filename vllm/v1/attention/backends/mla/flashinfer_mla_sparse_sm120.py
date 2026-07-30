@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from vllm.logger import init_logger
 from vllm.v1.attention.backend import (
     AttentionLayer,
     AttentionType,
@@ -22,6 +23,8 @@ from vllm.v1.attention.backends.mla.sparse_utils import (
 
 if TYPE_CHECKING:
     from vllm.model_executor.models.deepseek_v2 import Indexer
+
+logger = init_logger(__name__)
 
 
 def _kv_scale_format_for_model(model_type: str | None) -> str:
@@ -121,6 +124,14 @@ class FlashInferMLASparseSM120Impl(MLAAttentionImpl[FlashInferMLASparseMetadata]
         topk_indices = self.topk_indices_buffer[:num_actual_toks]
 
         if self.dcp_world_size > 1:
+            # fiosco-v0.2.0 carry #47779: entered the DCP branch that filters
+            # topk indices per rank and returns an LSE for the DCP reducer.
+            # Guarded with is_compiling() — this is a per-step decode path.
+            if not torch.compiler.is_compiling():
+                logger.info_once(
+                    "[fiosco-v0.2.0 carry #47779] FlashInferMLASparseSM120Impl "
+                    "decode entered DCP path (LSE returned for DCP reduction)"
+                )
             topk_indices_physical, seq_lens = triton_filter_and_convert_dcp_index(
                 attn_metadata.req_id_per_token[:num_actual_toks],
                 attn_metadata.block_table,

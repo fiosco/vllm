@@ -2531,6 +2531,11 @@ class ModelOptMixedPrecisionConfig(ModelOptQuantConfigBase):
                 # is_checkpoint_fp8_serialized from its config (not
                 # quant_method), so the mixed config's fp8_config suffices.
                 # No RoutedExperts arm: the method is LinearMethodBase-only.
+                logger.info_once(
+                    "[fiosco-v0.2.0 carry modelopt-mixed-pbwo] "
+                    "dispatched FP8_PB_WO layer %s",
+                    prefix,
+                )
                 return ModelOptFp8PbWoLinearMethod(self.fp8_config)
             if quant_algo == "FP8":
                 return ModelOptFp8LinearMethod(self.fp8_config)
