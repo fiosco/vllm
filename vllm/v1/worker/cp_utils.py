@@ -97,7 +97,13 @@ def prepare_dcp_dummy_context_metadata(
     # must point at allocated KV blocks.
     assert kv_cache_config is not None
     max_valid_block_id = kv_cache_config.num_blocks - 1
-    assert max_valid_block_id > 0
+    # Cudagraph profiling runs against a throwaway KV pool that can hold a
+    # single block (_init_minimal_kv_cache_for_profiling), so num_blocks == 1
+    # and max_valid_block_id == 0: no block for the dummy entries to point at,
+    # and the modulo below would divide by zero. Skip the fill — the profiling
+    # pass only measures peak memory and never reads the block table.
+    if max_valid_block_id <= 0:
+        return
     for blk_table in input_batch.block_table.block_tables:
         max_row_blocks = (
             blk_table.max_num_blocks_per_req // blk_table.blocks_per_kv_block
