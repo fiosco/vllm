@@ -766,6 +766,19 @@ def _check_enough_kv_cache_memory(
 
     needed_memory = get_needed_memory()
 
+    # === DIAGNOSTIC: log memory budget before/after check ===
+    gap_gib = (needed_memory - available_memory) / (1024**3)
+    logger.info(
+        "KV cache check: needed=%s GiB, available=%s GiB, gap=%.2f GiB, "
+        "max_model_len=%d, %s",
+        format_gib(needed_memory),
+        format_gib(available_memory),
+        gap_gib,
+        max_model_len,
+        "PASS" if needed_memory <= available_memory else "FAIL",
+    )
+    # =======================================================
+
     if needed_memory > available_memory:
         estimated_max_len = estimate_max_model_len(available_memory)
         estimated_msg = ""
@@ -1816,6 +1829,91 @@ def generate_scheduler_kv_cache_config(
     return cfg
 
 
+def _log_kv_cache_group_breakdown(
+    vllm_config: VllmConfig,
+    kv_cache_groups: list["KVCacheGroupSpec"],
+) -> None:
+    """
+    Emit a detailed per-group breakdown of KV cache memory usage.
+    Used to diagnose why flashinfer and b12x produce different memory budgets.
+    """
+    logger.info("=== KV CACHE GROUP BREAKDOWN ===")
+    logger.info("  num_groups: %d", len(kv_cache_groups))
+
+    for i, group in enumerate(kv_cache_groups):
+        n_layers = len(group.layer_names)
+        spec = group.kv_cache_spec
+        spec_type = type(spec).__name__
+
+        logger.info(
+            "  group %d: spec_type=%s layers=%d first_layers=%s ...",
+            i,
+            spec_type,
+            n_layers,
+            str(group.layer_names[:3]),
+        )
+
+        if isinstance(spec, UniformTypeKVCacheSpecs):
+            # Per-layer UniformTypeKVCacheSpecs
+            per_layer_specs = spec.kv_cache_specs
+            sample_layer = next(iter(per_layer_specs.keys()))
+            sample_spec = per_layer_specs[sample_layer]
+
+            try:
+                sample_bytes = sample_spec.max_memory_usage_bytes(vllm_config)
+            except Exception:
+                sample_bytes = -1
+
+            # Get page sizes from the first spec in the group
+            page_sizes_info = "N/A"
+            num_tuples = "N/A"
+            try:
+                # UniformTypeKVCacheSpecs exposes get_page_sizes() on the group level
+                if hasattr(spec, "get_page_sizes"):
+                    page_sizes_info = str(spec.get_page_sizes())
+                if hasattr(spec, "get_num_layer_tuples"):
+                    num_tuples = str(spec.get_num_layer_tuples())
+            except Exception:
+                pass
+
+            logger.info(
+                "    sample_layer=%s sample_bytes=%d (%.2f GiB) "
+                "page_sizes=%s num_layer_tuples=%s",
+                sample_layer,
+                sample_bytes,
+                sample_bytes / (1024**3),
+                page_sizes_info,
+                num_tuples,
+            )
+
+            # Total for this group
+            try:
+                group_pages = spec.max_memory_usage_pages(vllm_config)
+            except Exception:
+                group_pages = -1
+
+            logger.info(
+                "    group_pages=%d total_spec_bytes=%d (%.2f GiB)",
+                group_pages,
+                sum(
+                    s.max_memory_usage_bytes(vllm_config)
+                    for s in per_layer_specs.values()
+                ),
+                sum(
+                    s.max_memory_usage_bytes(vllm_config)
+                    for s in per_layer_specs.values()
+                )
+                / (1024**3),
+            )
+        else:
+            # Non-UniformTypeKVCacheSpecs: log page_size directly
+            try:
+                ps = getattr(spec, "page_size", "N/A")
+            except Exception:
+                ps = "N/A"
+            logger.info("    page_size=%s", ps)
+
+
 def get_kv_cache_capacity(
     vllm_config: VllmConfig, kv_cache_config: KVCacheConfig
 ) -> tuple[int, float]:
@@ -1842,6 +1940,10 @@ def _max_memory_usage_bytes_from_groups(
     """
     if not kv_cache_groups:
         return 0
+
+    # === DIAGNOSTIC: log per-group breakdown for each invocation ===
+    _log_kv_cache_group_breakdown(vllm_config, kv_cache_groups)
+    # ===============================================================
 
     if len(kv_cache_groups) == 1 and isinstance(
         kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs
@@ -2124,6 +2226,24 @@ def get_kv_cache_configs(
         _auto_fit_max_model_len(
             vllm_config, projected_groups_per_worker, available_memory
         )
+
+    # === DIAGNOSTIC: log attention backend + per-worker memory context ===
+    attn_backend = getattr(vllm_config.scheduler_config, "attention_backend", "N/A")
+    if hasattr(attn_backend, "__name__"):
+        attn_backend = attn_backend.__name__
+    logger.info(
+        "=== KV CACHE CONFIG CONTEXT ===  attention_backend=%s, num_workers=%d",
+        attn_backend,
+        len(kv_cache_specs),
+    )
+    for i, avail_mem in enumerate(available_memory):
+        logger.info(
+            "  worker %d: available_kv_cache=%d (%.2f GiB)",
+            i,
+            avail_mem,
+            avail_mem / (1024**3),
+        )
+    # ================================================================
 
     # Check if the available memory is enough per worker.
     for groups, avail_mem in zip(projected_groups_per_worker, available_memory):

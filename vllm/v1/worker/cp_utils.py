@@ -103,6 +103,13 @@ def prepare_dcp_dummy_context_metadata(
     # and the modulo below would divide by zero. Skip the fill — the profiling
     # pass only measures peak memory and never reads the block table.
     if max_valid_block_id <= 0:
+        # fiosco-v0.2.0 carry dcp-cudagraph-profiling-guard: took the early
+        # return that replaces the stock `assert max_valid_block_id > 0`.
+        logger.info_once(
+            "[fiosco-v0.2.0 carry dcp-cudagraph-profiling-guard] skipped DCP "
+            "dummy block-table fill (profiling KV pool has %d block(s))",
+            kv_cache_config.num_blocks,
+        )
         return
     for blk_table in input_batch.block_table.block_tables:
         max_row_blocks = (

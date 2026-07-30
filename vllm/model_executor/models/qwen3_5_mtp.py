@@ -111,6 +111,13 @@ class Qwen3_5MultiTokenPredictor(nn.Module):
         # experts: extend the active CT ignore list with every per-expert MTP
         # linear so the FusedMoE selects UnquantizedFusedMoEMethod and registers
         # BF16 w13/w2 weights matching the checkpoint.
+        # fiosco-v0.2.0 carry #41994: Qwen3_5MultiTokenPredictor entered the
+        # MTP ignore-extension path. Unconditional, unlike the carry's own
+        # logger.info below, which only fires when entries are actually added.
+        logger.info_once(
+            "[fiosco-v0.2.0 carry #41994] Qwen3_5MultiTokenPredictor entered "
+            "(compressed-tensors MTP per-expert ignore extension)"
+        )
         if (
             quant_config is not None
             and quant_config.get_name() == "compressed-tensors"

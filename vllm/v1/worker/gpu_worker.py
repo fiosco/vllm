@@ -544,6 +544,36 @@ class Worker(WorkerBase):
             - cudagraph_memory_estimate_applied
         )
 
+        # === DIAGNOSTIC: budget breakdown ===
+        logger.info("=== GPU MEMORY BUDGET BREAKDOWN ===")
+        logger.info(
+            "  total_memory:            %s GiB",
+            format_gib(self.init_snapshot.total_memory),
+        )
+        logger.info(
+            "  free_memory (initial):   %s GiB",
+            format_gib(self.init_snapshot.free_memory),
+        )
+        logger.info(
+            "  requested_memory:        %s GiB (util %.2f)",
+            format_gib(self.requested_memory),
+            self.cache_config.gpu_memory_utilization,
+        )
+        logger.info(
+            "  non_kv_cache_memory:     %s GiB",
+            format_gib(profile_result.non_kv_cache_memory),
+        )
+        logger.info(
+            "  cudagraph_memory_est:    %s GiB",
+            format_gib(cudagraph_memory_estimate_applied),
+        )
+        logger.info(
+            "  available_kv_cache:      %s GiB",
+            format_gib(self.available_kv_cache_memory_bytes),
+        )
+        logger.info("=== END GPU MEMORY BUDGET BREAKDOWN ===")
+        # ================================
+
         unrequested_memory = self.init_snapshot.free_memory - self.requested_memory
         logger.debug(
             "Initial free memory: %s GiB; Requested memory: %f (util), %s GiB",

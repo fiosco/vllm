@@ -4507,6 +4507,13 @@ class GPUModelRunner(
             # tables while this batch's proposer still reads them on the GPU,
             # causing illegal memory access under concurrent MTP spec-decode.
             if self.prepare_inputs_event is not None:
+                # fiosco-v0.2.0 carry #37132: entered spec-decode prepare_inputs
+                # race-fix wrapper. Defensively guarded with is_compiling().
+                if not torch.compiler.is_compiling():
+                    logger.info_once(
+                        "[fiosco-v0.2.0 carry #37132] sample_tokens wrapper "
+                        "entered (spec-decode prepare_inputs_event race fix)"
+                    )
                 self.prepare_inputs_event.record()
 
     def _sample_tokens_impl(

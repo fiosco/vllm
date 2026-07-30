@@ -17,10 +17,15 @@ from typing import Any, Literal
 
 import torch
 
+from vllm.logger import init_logger as _fiosco_init_logger
 from vllm.platforms import current_platform
 from vllm.triton_utils import triton
 
 logger = logging.getLogger(__name__)
+
+# fiosco-v0.2.0: vllm logger for info_once dedup (stdlib logger above is
+# used by the rest of this module).
+_fiosco_logger = _fiosco_init_logger(__name__ + ".fiosco_v020")
 
 COMPILER_MODE = os.getenv("FLA_COMPILER_MODE") == "1"
 FLA_CI_ENV = os.getenv("FLA_CI_ENV") == "1"
@@ -180,6 +185,15 @@ is_tma_supported = (
         hasattr(triton.language, "_experimental_make_tensor_descriptor")
         or hasattr(triton.language, "make_tensor_descriptor")
     )
+)
+
+# fiosco-v0.2.0 carry #37700: FLA utils loaded with `is_tma_supported`
+# additionally gated on 128KB SMEM (fired once at import). The v0.1.x half of
+# this carry — widening `is_nvidia_hopper` from the "NVIDIA H" name match to
+# cc[0]>=9 — is upstream as of v0.26.0 and is no longer part of the carry.
+_fiosco_logger.info_once(
+    "[fiosco-v0.2.0 carry #37700] FLA utils loaded "
+    "(SM12x classify: is_tma_supported 128KB SMEM gate)"
 )
 
 
