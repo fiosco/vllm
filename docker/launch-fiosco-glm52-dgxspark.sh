@@ -184,6 +184,15 @@ build_run() {
   local rank="$1" headless="$2" hostip="$3"
   local comp='{"cudagraph_mode":"FULL","max_cudagraph_capture_size":8}'
   local spec="{\"model\":\"${MODEL}\",\"method\":\"mtp\",\"quantization\":\"compressed-tensors\",\"num_speculative_tokens\":4,\"draft_sample_method\":\"probabilistic\"}"
+  # FlashInferMLASparseSM120Impl derives from MLAAttentionImpl rather than
+  # MLACommonBaseImpl, so it inherits no forward_mha and raises NotImplementedError
+  # on any MHA-dispatched prefill. mla_attention.py picks MHA when a batch has
+  # prefill tokens and prefill_max_seq_len <= index_topk (2048), while queries
+  # <= reorder_batch_threshold (128 here: 64 heads / TP4 = 16) are classified as
+  # decode. Prompts of 129-2048 tokens therefore kill the engine. Forcing MQA
+  # keeps every prefill on the sparse path. Do not remove without first landing
+  # forward_mha on the SM120 impl.
+  local attn='{"sparse_mla_force_mqa":true}'
   local cmd=(
     docker run -d --name "$NAME"
     --entrypoint=
@@ -217,6 +226,7 @@ build_run() {
     --reasoning-parser glm45 --tool-call-parser glm47 --enable-auto-tool-choice --enable-prefix-caching
     --tensor-parallel-size 4 --pipeline-parallel-size 1
     --attention-backend FLASHINFER_MLA_SPARSE_SM120
+    --attention-config "$attn"
     --max-model-len "$CTX" --max-num-seqs 1 --max-num-batched-tokens 4096
     --kv-cache-memory-bytes "$KV_BYTES"
     --gpu-memory-utilization "$GPU_MEM_UTIL" --kv-cache-dtype fp8_ds_mla
